@@ -12,13 +12,13 @@ The HTTP surface exposes `/healthz`, `/version`, `/metrics`, and `/mcp`.
 - Fetch, evidence, and crawl tools: `src/mcp/fetch/`
 - Browser tools: `src/mcp/browser/`
 - Backend clients: `src/backends/`
-- Deterministic Docker contract: `compose.contract.yaml`
+- Real backend deployment examples: maintained by consuming runtimes
 
 ## Local Checks
 
 - `cargo test`
 - `cargo clippy --all-targets -- -D warnings`
-- `tests/docker-contract.sh`
+- downstream live acceptance against real SearXNG, Firecrawl, and a real model
 
 ## Boundaries
 
@@ -28,5 +28,7 @@ The HTTP surface exposes `/healthz`, `/version`, `/metrics`, and `/mcp`.
 - Private deployments own host inventory, credentials, and release pins.
 - Search and extract are enabled by default. Crawl and browser are explicit
   operator opt-ins.
+- Do not add mock backend services or claim a mock-backed run as integration
+  acceptance.
 - Never add private hostnames, credentials, deployment-specific paths, or
   private Git dependencies here.

@@ -144,7 +144,7 @@ impl CamofoxClient {
         let resp = self
             .auth(
                 self.http
-                    .delete(self.url(&format!("/tabs/{}", tab_id)))
+                    .delete(self.url(&format!("/tabs/{tab_id}")))
                     .query(&[("userId", USER_ID)]),
             )
             .send()
@@ -163,7 +163,7 @@ impl CamofoxClient {
         let resp = self
             .auth(
                 self.http
-                    .get(self.url(&format!("/tabs/{}/snapshot", tab_id)))
+                    .get(self.url(&format!("/tabs/{tab_id}/snapshot")))
                     .query(&[("userId", USER_ID)]),
             )
             .send()
@@ -184,7 +184,7 @@ impl CamofoxClient {
         let resp = self
             .auth(
                 self.http
-                    .get(self.url(&format!("/tabs/{}/screenshot", tab_id)))
+                    .get(self.url(&format!("/tabs/{tab_id}/screenshot")))
                     .query(&query),
             )
             .send()
@@ -218,7 +218,7 @@ impl CamofoxClient {
         let resp = self
             .auth(
                 self.http
-                    .post(self.url(&format!("/tabs/{}/click", tab_id)))
+                    .post(self.url(&format!("/tabs/{tab_id}/click")))
                     .json(&body),
             )
             .send()
@@ -245,7 +245,7 @@ impl CamofoxClient {
         let resp = self
             .auth(
                 self.http
-                    .post(self.url(&format!("/tabs/{}/type", tab_id)))
+                    .post(self.url(&format!("/tabs/{tab_id}/type")))
                     .json(&body),
             )
             .send()
@@ -278,7 +278,7 @@ impl CamofoxClient {
         let resp = self
             .auth(
                 self.http
-                    .post(self.url(&format!("/tabs/{}/scroll", tab_id)))
+                    .post(self.url(&format!("/tabs/{tab_id}/scroll")))
                     .json(&body),
             )
             .send()

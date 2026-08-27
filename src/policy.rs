@@ -53,7 +53,7 @@ impl Policy {
         if enabled {
             Decision::Allow
         } else {
-            Decision::Deny(format!("family_disabled:{:?}", fam).to_lowercase())
+            Decision::Deny(format!("family_disabled:{fam:?}").to_lowercase())
         }
     }
 

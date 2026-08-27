@@ -207,7 +207,7 @@ impl FirecrawlClient {
 
         // Step 2: Poll GET /v1/crawl/{id} until completed or failed.
         let deadline = Instant::now() + Duration::from_secs(120);
-        let poll_url = self.url(&format!("/v1/crawl/{}", job_id));
+        let poll_url = self.url(&format!("/v1/crawl/{job_id}"));
         let mut all_pages: Vec<ScrapeResult> = Vec::new();
 
         loop {

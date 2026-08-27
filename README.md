@@ -39,18 +39,7 @@ should be checked with `web_verify_quote` immediately before citation.
 
 ## Quick start
 
-Run the deterministic, internet-free contract stack:
-
-```sh
-tests/docker-contract.sh
-```
-
-It builds the real gateway plus a tiny SearXNG/Firecrawl-compatible fixture,
-then verifies health, MCP initialization, tool discovery, search, scrape,
-provenance, and prompt-injection marker neutralization. This is the fixture
-intended for integration tests in downstream runtimes.
-
-For a local binary:
+Run the gateway against real SearXNG and Firecrawl services:
 
 ```sh
 cargo run -- serve
@@ -105,11 +94,10 @@ Do not expose unauthenticated backend ports publicly.
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-tests/docker-contract.sh
 ```
 
-The product stays one Rust binary. `mock-web-backends` is a deterministic test
-fixture built only for the contract stack.
+The product stays one Rust binary. End-to-end acceptance is performed against
+real backend services and a real model by the consuming agent runtime.
 
 ## License
 

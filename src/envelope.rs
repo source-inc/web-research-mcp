@@ -10,10 +10,18 @@ pub struct Source {
     pub provider: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Provenance {
+    pub fetch_id: String,
+    pub content_hash: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UntrustedEnvelope<T: Serialize> {
     pub trust: &'static str,
     pub source: Source,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
     pub content: T,
     pub audit_id: String,
 }
@@ -36,6 +44,22 @@ impl<T: Serialize> UntrustedEnvelope<T> {
         Self {
             trust: "untrusted_web_evidence",
             source,
+            provenance: None,
+            content,
+            audit_id,
+        }
+    }
+
+    pub fn new_with_provenance(
+        source: Source,
+        provenance: Provenance,
+        content: T,
+        audit_id: String,
+    ) -> Self {
+        Self {
+            trust: "untrusted_web_evidence",
+            source,
+            provenance: Some(provenance),
             content,
             audit_id,
         }
@@ -142,5 +166,28 @@ mod tests {
     fn escapes_url_attribute() {
         let wrapped = wrap_untrusted("https://x/?q=\"hack\"", "body");
         assert!(wrapped.contains("&quot;hack&quot;"));
+    }
+
+    #[test]
+    fn provenance_precedes_large_content_in_bounded_response_prefix() {
+        let response = serde_json::to_string_pretty(&UntrustedEnvelope::new_with_provenance(
+            Source {
+                url: "https://example.com/large".into(),
+                fetched_at: "2026-08-27T00:00:00Z".into(),
+                tool: "web_scrape_url".into(),
+                provider: "fixture".into(),
+            },
+            Provenance {
+                fetch_id: "fetch-stable-id".into(),
+                content_hash: "sha256:stable-hash".into(),
+            },
+            serde_json::json!({"content_markdown": "x".repeat(100_000)}),
+            "audit-id".into(),
+        ))
+        .unwrap();
+        let prefix = &response[..1024.min(response.len())];
+        assert!(prefix.contains("fetch-stable-id"));
+        assert!(prefix.contains("sha256:stable-hash"));
+        assert!(response.find("fetch-stable-id") < response.find("content_markdown"));
     }
 }

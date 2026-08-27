@@ -3,7 +3,7 @@ use rmcp::{
     handler::server::wrapper::Parameters, service::RequestContext, tool, tool_router, RoleServer,
 };
 
-use crate::envelope::{Source, UntrustedEnvelope};
+use crate::envelope::{Provenance, Source, UntrustedEnvelope};
 use crate::mcp::{
     domain::{WebFindInFetchArgs, WebGetFetchArgs, WebVerifyQuoteArgs},
     error_envelope, WebResearchMcp,
@@ -167,12 +167,16 @@ impl WebResearchMcp {
                 recorded_at: now,
             })
             .await;
-        serde_json::to_string_pretty(&UntrustedEnvelope::new(
+        serde_json::to_string_pretty(&UntrustedEnvelope::new_with_provenance(
             Source {
                 url: record.final_url.clone(),
                 fetched_at: record.completed_at.to_rfc3339(),
                 tool: tool.into(),
                 provider: record.source_provider.clone(),
+            },
+            Provenance {
+                fetch_id: record.fetch_id.clone(),
+                content_hash: record.content_hash.clone(),
             },
             serde_json::json!({
                 "fetch_id": record.fetch_id,

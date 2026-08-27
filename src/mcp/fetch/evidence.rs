@@ -56,7 +56,7 @@ impl WebResearchMcp {
                 None,
             ));
         };
-        self.evidence_response("web_get_fetch", record, serde_json::Value::Null)
+        self.evidence_response("web_get_fetch", record, serde_json::Value::Null, true)
             .await
     }
 
@@ -92,6 +92,7 @@ impl WebResearchMcp {
             "web_find_in_fetch",
             record,
             serde_json::json!({"needle": args.needle, "matches": matches}),
+            false,
         )
         .await
     }
@@ -134,6 +135,7 @@ impl WebResearchMcp {
                 "match_count": positions.len().min(50),
                 "match_offsets": positions.into_iter().take(50).collect::<Vec<_>>(),
             }),
+            false,
         )
         .await
     }
@@ -152,6 +154,7 @@ impl WebResearchMcp {
         tool: &str,
         record: FetchRecord,
         derived: serde_json::Value,
+        include_stored_content: bool,
     ) -> Result<String, String> {
         let audit_id = Store::new_audit_id();
         let now = Utc::now();
@@ -178,20 +181,31 @@ impl WebResearchMcp {
                 fetch_id: record.fetch_id.clone(),
                 content_hash: record.content_hash.clone(),
             },
-            serde_json::json!({
-                "fetch_id": record.fetch_id,
-                "content_hash": record.content_hash,
-                "requested_url": record.requested_url,
-                "final_url": record.final_url,
-                "bytes": record.bytes,
-                "truncated": record.truncated,
-                "content_markdown": record.content_markdown,
-                "derived": derived,
-            }),
+            evidence_content(&record, derived, include_stored_content),
             audit_id,
         ))
         .map_err(|error| error.to_string())
     }
+}
+
+fn evidence_content(
+    record: &FetchRecord,
+    derived: serde_json::Value,
+    include_stored_content: bool,
+) -> serde_json::Value {
+    let mut content = serde_json::json!({
+        "fetch_id": record.fetch_id,
+        "content_hash": record.content_hash,
+        "requested_url": record.requested_url,
+        "final_url": record.final_url,
+        "bytes": record.bytes,
+        "truncated": record.truncated,
+        "derived": derived,
+    });
+    if include_stored_content {
+        content["content_markdown"] = serde_json::Value::String(record.content_markdown.clone());
+    }
+    content
 }
 
 fn excerpts(body: &str, needle: &str, limit: usize, context: usize) -> Vec<serde_json::Value> {
@@ -226,11 +240,63 @@ fn ceil_char_boundary(value: &str, mut index: usize) -> usize {
 mod tests {
     use super::*;
 
+    fn record_with_body(body: String) -> FetchRecord {
+        let now = Utc::now();
+        FetchRecord {
+            fetch_id: "fetch-123".into(),
+            requested_url: "https://example.com/source".into(),
+            final_url: "https://example.com/source".into(),
+            mode: "scrape".into(),
+            requested_at: now,
+            completed_at: now,
+            status: "ok".into(),
+            bytes: body.len() as u64,
+            content_hash: Store::content_hash(body.as_bytes()),
+            content_markdown: body,
+            source_provider: "fixture".into(),
+            policy_decision: "allow".into(),
+            truncated: false,
+        }
+    }
+
     #[test]
     fn excerpts_are_utf8_safe() {
         let body = "zero café needle τέλος";
         let found = excerpts(body, "needle", 1, 3);
         assert_eq!(found.len(), 1);
         assert!(found[0]["excerpt"].as_str().unwrap().contains("needle"));
+    }
+
+    #[test]
+    fn derived_evidence_response_does_not_repeat_the_stored_page() {
+        let record = record_with_body(format!(
+            "{}needle{}",
+            "a".repeat(50_000),
+            "b".repeat(50_000)
+        ));
+        let matches = excerpts(&record.content_markdown, "needle", 1, 160);
+        let content = evidence_content(
+            &record,
+            serde_json::json!({"needle": "needle", "matches": matches}),
+            false,
+        );
+        let serialized = serde_json::to_vec(&content).expect("serialize compact evidence response");
+
+        assert!(content.get("content_markdown").is_none());
+        assert_eq!(content["fetch_id"], "fetch-123");
+        assert_eq!(content["derived"]["matches"].as_array().unwrap().len(), 1);
+        assert!(
+            serialized.len() < 2_000,
+            "derived response was {} bytes",
+            serialized.len()
+        );
+    }
+
+    #[test]
+    fn get_fetch_response_keeps_the_stored_page() {
+        let record = record_with_body("stored body".into());
+        let content = evidence_content(&record, serde_json::Value::Null, true);
+
+        assert_eq!(content["content_markdown"], "stored body");
     }
 }

@@ -1,0 +1,47 @@
+[package]
+name = "web-research-mcp"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/source-inc/web-research-mcp"
+description = "A bounded MCP gateway for self-hosted web search, extraction, crawl, and browser backends"
+rust-version = "1.82"
+publish = false
+
+[[bin]]
+name = "web-research-mcp"
+path = "src/bin/web-research-mcp.rs"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+dirs = "6"
+hostname = "0.4"
+parking_lot = "0.12"
+prometheus = { version = "0.13", features = ["process"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rmcp = { version = "1.7", features = ["client", "transport-io", "transport-streamable-http-server"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = true

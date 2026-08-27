@@ -1,0 +1,6 @@
+.git
+.github
+target
+compose*.yaml
+README.md
+tests

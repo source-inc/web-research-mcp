@@ -1,0 +1,31 @@
+name: web-research-mcp-contract
+
+services:
+  mock-backends:
+    build:
+      context: .
+      args:
+        BINARY: mock-web-backends
+    entrypoint: ["/usr/local/bin/service"]
+    environment:
+      PORT: "8080"
+
+  gateway:
+    build:
+      context: .
+      args:
+        BINARY: web-research-mcp
+    environment:
+      WEB_RESEARCH_MCP_HTTP_BIND_ADDR: "0.0.0.0"
+      WEB_RESEARCH_MCP_HTTP_PORT: "9213"
+      WEB_RESEARCH_MCP_DATA_DIR: "/home/service/.web-research-mcp/data"
+      SEARXNG_ENDPOINT: "http://mock-backends:8080"
+      FIRECRAWL_ENDPOINT: "http://mock-backends:8080"
+      CAMOFOX_ENDPOINT: "http://mock-backends:8080"
+      WEB_RESEARCH_MCP_ENABLE_CRAWL: "false"
+      WEB_RESEARCH_MCP_ENABLE_BROWSER: "false"
+      RUST_LOG: "info"
+    ports:
+      - "127.0.0.1:${WEB_RESEARCH_MCP_CONTRACT_PORT:-19213}:9213"
+    depends_on:
+      - mock-backends

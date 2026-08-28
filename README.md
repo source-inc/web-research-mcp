@@ -65,9 +65,16 @@ That loopback URL is for clients running on the host. A client joined to the
 Compose `research` network should use `http://gateway:9213/mcp` instead.
 
 The command requires `gents` on `PATH` and a local `gents server` to be
-running. Set `GENTS_BIN` when the binary has another path. Use
-`./scripts/stack up` when you want to start the infrastructure without
-registering it in Gents.
+running. Set `GENTS_BIN` when the binary has another path. Set `GENTS_GRAPHQL`
+to target a server outside the default `127.0.0.1:9191`, or `GENTS_HOME` to
+target another stopped local home; the two scope variables are mutually
+exclusive. Use `./scripts/stack up` when you want to start the infrastructure
+without registering it in Gents.
+
+```sh
+GENTS_GRAPHQL=http://127.0.0.1:19191/api/v0/graphql \
+  ./scripts/stack install-mcp
+```
 
 The full stack reserves roughly 12 GB of memory; allow 14–16 GB for Docker.
 Only the gateway is published, and it is bound to loopback. Evidence is kept in

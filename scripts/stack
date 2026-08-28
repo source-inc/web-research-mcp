@@ -55,35 +55,44 @@ start_stack() {
   wait_until_ready
 }
 
+run_gents_scoped() {
+  local gents_bin="$1"
+  shift
+
+  if [[ -n "${GENTS_GRAPHQL:-}" ]]; then
+    "${gents_bin}" "$@" --graphql "${GENTS_GRAPHQL}"
+  elif [[ -n "${GENTS_HOME:-}" ]]; then
+    "${gents_bin}" "$@" --home "${GENTS_HOME}"
+  else
+    "${gents_bin}" "$@"
+  fi
+}
+
 install_mcp() {
   local gents_bin="${GENTS_BIN:-gents}"
   local port="${WEB_RESEARCH_MCP_PORT:-9213}"
   local endpoint="http://127.0.0.1:${port}/mcp"
   local scope_hint=""
-  local -a gents_scope=()
 
   if [[ -n "${GENTS_GRAPHQL:-}" && -n "${GENTS_HOME:-}" ]]; then
     echo "set only one of GENTS_GRAPHQL or GENTS_HOME" >&2
     return 2
   fi
   if [[ -n "${GENTS_GRAPHQL:-}" ]]; then
-    gents_scope=(--graphql "${GENTS_GRAPHQL}")
     scope_hint=" --graphql ${GENTS_GRAPHQL}"
   elif [[ -n "${GENTS_HOME:-}" ]]; then
-    gents_scope=(--home "${GENTS_HOME}")
     scope_hint=" --home ${GENTS_HOME}"
   fi
 
   require_command "${gents_bin}"
   start_stack
-  "${gents_bin}" mcp register "${service_id}" \
+  run_gents_scoped "${gents_bin}" mcp register "${service_id}" \
     --endpoint "${endpoint}" \
     --display-name "Web Research MCP" \
     --description "Local bounded web evidence gateway" \
     --version "${service_version}" \
-    --send-agent-did \
-    "${gents_scope[@]}"
-  "${gents_bin}" mcp probe "${service_id}" --timeout 30s "${gents_scope[@]}"
+    --send-agent-did
+  run_gents_scoped "${gents_bin}" mcp probe "${service_id}" --timeout 30s
 
   echo
   echo "web-research-mcp is installed in Gents"

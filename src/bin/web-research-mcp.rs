@@ -74,7 +74,7 @@ async fn serve(config: Config) -> Result<()> {
         timeout_browser,
     )?;
 
-    let mcp = WebResearchMcp::new(
+    let mcp = WebResearchMcp::new_with_exposed_tools(
         policy,
         store,
         sessions,
@@ -83,7 +83,8 @@ async fn serve(config: Config) -> Result<()> {
         searxng,
         firecrawl,
         camofox,
-    );
+        config.exposed_tools.as_deref(),
+    )?;
 
     let host = hostname::get()
         .ok()

@@ -72,6 +72,7 @@ container deployment case:
 | `WEB_RESEARCH_MCP_HTTP_PORT` | HTTP port |
 | `WEB_RESEARCH_MCP_DATA_DIR` | Fetch/audit evidence directory |
 | `WEB_RESEARCH_MCP_MCP_PATH` | MCP path, default `/mcp` |
+| `WEB_RESEARCH_MCP_EXPOSED_TOOLS` | Optional comma-separated exact tool allowlist; omitted exposes the full surface |
 | `SEARXNG_ENDPOINT` | SearXNG base URL |
 | `FIRECRAWL_ENDPOINT` | Firecrawl-compatible base URL |
 | `FIRECRAWL_API_KEY` | Optional bearer token |
@@ -83,6 +84,17 @@ container deployment case:
 The TOML policy also controls result/page/byte/concurrency caps and domain
 allow/deny lists. Search and extract are enabled by default; crawl and browser
 must be explicitly enabled.
+
+Use a deployment-level tool allowlist when an agent needs only part of the
+gateway. For example, an autonomous research worker that may collect a bounded
+bundle and read only its stored evidence can use:
+
+```sh
+WEB_RESEARCH_MCP_EXPOSED_TOOLS=web_collect_evidence,web_find_in_fetch
+```
+
+Hidden tools are neither advertised nor callable. Unknown configured names
+fail startup instead of silently widening or narrowing the surface.
 
 ## Security boundary
 

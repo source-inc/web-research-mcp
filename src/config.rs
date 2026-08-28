@@ -36,6 +36,9 @@ pub struct Config {
     pub http_port: u16,
     pub http_bind_addr: String,
     pub mcp_path: String,
+    /// Exact MCP tools advertised by this deployment. `None` preserves the
+    /// full tool surface; `Some([])` intentionally exposes no tools.
+    pub exposed_tools: Option<Vec<String>>,
     pub backends: Backends,
     pub policy: Policy,
     pub store: Store,
@@ -180,6 +183,7 @@ impl Default for Config {
             http_port: 9213,
             http_bind_addr: "127.0.0.1".to_string(),
             mcp_path: "/mcp".to_string(),
+            exposed_tools: None,
             backends: Backends {
                 searxng: BackendEndpoint {
                     endpoint: "http://127.0.0.1:9210".into(),
@@ -236,6 +240,16 @@ impl Config {
         }
         if let Ok(value) = std::env::var("WEB_RESEARCH_MCP_MCP_PATH") {
             self.mcp_path = value;
+        }
+        if let Ok(value) = std::env::var("WEB_RESEARCH_MCP_EXPOSED_TOOLS") {
+            self.exposed_tools = Some(
+                value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            );
         }
         if let Ok(value) = std::env::var("SEARXNG_ENDPOINT") {
             self.backends.searxng.endpoint = value;

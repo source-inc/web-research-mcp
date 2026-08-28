@@ -13,13 +13,16 @@ dependency.
 Deep research needs more than a generic `fetch` tool. It needs a repeatable
 sequence:
 
-1. search broadly and retain ranked candidate metadata;
-2. fetch selected primary sources through a bounded extractor;
-3. persist the exact evidence bytes with a stable ID and SHA-256 hash;
-4. find and verify quotations against that stored evidence;
-5. let the agent runtime persist claims, contradictions, and the final report.
+1. search across multiple independent indexes and retain engine diagnostics;
+2. normalize, deduplicate, relevance-rank, and diversify candidates;
+3. fetch selected sources through a bounded extractor and reject irrelevant or
+   interstitial content;
+4. persist the exact evidence bytes with a stable ID and SHA-256 hash;
+5. select query-focused passages and verify quotations against that stored
+   evidence;
+6. let the agent runtime persist claims, contradictions, and the final report.
 
-`web-research-mcp` owns steps 1–4. An agent runtime such as
+`web-research-mcp` owns steps 1–5. An agent runtime such as
 [Gents](https://github.com/source-inc/gents) owns the research graph and final
 documents.
 
@@ -36,14 +39,27 @@ documents.
 
 Every successful scrape returns `fetch_id`, `content_hash`, final URL, byte
 count, and a nonce-delimited untrusted-content envelope. Important quotations
-should be checked with `web_verify_quote` immediately before citation.
+can be checked with `web_verify_quote` immediately before citation.
 
 `web_collect_evidence` is the preferred boundary for autonomous research. A
 caller supplies a stable assignment ID and 1–6 planned queries; the gateway
-deduplicates their candidates, attempts no more than 12 scrapes, and returns at
-most 8 persisted evidence records, each with a short exact excerpt verified
-against its stored fetch and hash. The assignment is idempotent: retries with
-the same inputs reuse the stored bundle, while conflicting inputs are rejected.
+normalizes and relevance-ranks their candidates, limits host and near-duplicate
+dominance, attempts no more than 12 scrapes, and returns at most 8 persisted
+evidence records. Every accepted record includes the matching query,
+contributing search engines, retrieval and content relevance scores, a
+query-focused excerpt, and an exact quote verified against the stored fetch and
+hash. If the quality threshold cannot be met, the response reports an evidence
+shortfall instead of padding the bundle with unrelated pages. The assignment is
+idempotent: retries with the same inputs reuse the stored bundle, while
+conflicting inputs are rejected.
+
+The bundled stack is fully open source and needs no search API key. Its SearXNG
+profile uses a tested mix of general web engines plus open scholarly and
+technical indexes, routes each query to relevant categories, bounds individual
+engine latency, and exposes contributing and unresponsive engines in response
+diagnostics and metrics. Search-engine behavior depends on network egress and
+can change over time; the checked-in quality fixture protects against observed
+false positives while the real stack smoke test catches deployment drift.
 
 ## Quick start: complete local stack
 

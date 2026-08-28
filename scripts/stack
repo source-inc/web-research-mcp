@@ -5,7 +5,7 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose=(docker compose --project-directory "${repo_dir}" -f "${repo_dir}/compose.yaml")
 command="${1:-up}"
 service_id="web-research-mcp"
-service_version="0.1.6"
+service_version="0.1.7"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -17,6 +17,27 @@ require_command() {
 show_failure() {
   "${compose[@]}" ps || true
   "${compose[@]}" logs --no-color --tail 200 gateway searxng firecrawl-api || true
+}
+
+wait_for_searxng_health() {
+  local container_id
+  local health_state
+  local attempt
+
+  container_id="$("${compose[@]}" ps --quiet searxng)"
+  for attempt in $(seq 1 30); do
+    health_state="$(docker inspect --format '{{.State.Health.Status}}' "${container_id}" 2>/dev/null || true)"
+    if [[ "${health_state}" == "healthy" ]]; then
+      return 0
+    fi
+    if [[ "${health_state}" == "unhealthy" ]]; then
+      echo "searxng became unhealthy after restart" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  echo "timed out waiting for searxng after restart" >&2
+  return 1
 }
 
 wait_until_ready() {
@@ -52,6 +73,11 @@ start_stack() {
   else
     "${compose[@]}" up --detach --pull always
   fi
+  # Compose does not recreate a running container when only a bind-mounted
+  # settings file changes. Restart SearXNG so `stack up` always applies the
+  # search profile shipped by the checked-out repository.
+  "${compose[@]}" restart searxng
+  wait_for_searxng_health
   wait_until_ready
 }
 

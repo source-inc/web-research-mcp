@@ -128,22 +128,50 @@ impl WebResearchMcp {
             .await;
         timer.observe_duration();
         match res {
-            Ok(hits) => {
-                let mapped: Vec<SearchHit> = hits
+            Ok(search_response) => {
+                let mut contributing_engines = std::collections::BTreeSet::new();
+                let mapped: Vec<SearchHit> = search_response
+                    .results
                     .into_iter()
                     .filter(|hit| domain_rules_allow(&hit.url, &args))
                     .take(max)
                     .enumerate()
-                    .map(|(index, h)| SearchHit {
-                        rank: index + 1,
-                        url: h.url,
-                        title: h.title,
-                        snippet: h.snippet,
-                        engine: h.engine,
-                        score: h.score,
-                        published_at: h.published_at,
+                    .map(|(index, mut h)| {
+                        if h.engines.is_empty() && !h.engine.is_empty() {
+                            h.engines.push(h.engine.clone());
+                        }
+                        contributing_engines.extend(h.engines.iter().cloned());
+                        SearchHit {
+                            rank: index + 1,
+                            url: h.url,
+                            title: h.title,
+                            snippet: h.snippet,
+                            engine: h.engine,
+                            engines: h.engines,
+                            score: h.score,
+                            published_at: h.published_at,
+                        }
                     })
                     .collect();
+                for engine in &contributing_engines {
+                    self.metrics
+                        .search_engine_events
+                        .with_label_values(&[engine, "contributed"])
+                        .inc();
+                }
+                for engine_error in &search_response.unresponsive_engines {
+                    self.metrics
+                        .search_engine_events
+                        .with_label_values(&[&engine_error.engine, "unresponsive"])
+                        .inc();
+                }
+                if !search_response.unresponsive_engines.is_empty() {
+                    tracing::warn!(
+                        query = %args.query,
+                        errors = ?search_response.unresponsive_engines,
+                        "SearXNG search completed with unresponsive engines"
+                    );
+                }
                 self.metrics
                     .tool_calls
                     .with_label_values(&["web_search", "ok"])
@@ -160,16 +188,22 @@ impl WebResearchMcp {
                         recorded_at: now,
                     })
                     .await;
-                serde_json::to_string_pretty(&UntrustedEnvelope::new(
-                    Source {
-                        url: format!("search:{}", args.query),
-                        fetched_at: now.to_rfc3339(),
-                        tool: "web_search".into(),
-                        provider: "searxng".into(),
-                    },
-                    mapped,
-                    audit_id,
-                ))
+                serde_json::to_string_pretty(
+                    &UntrustedEnvelope::new(
+                        Source {
+                            url: format!("search:{}", args.query),
+                            fetched_at: now.to_rfc3339(),
+                            tool: "web_search".into(),
+                            provider: "searxng".into(),
+                        },
+                        mapped,
+                        audit_id,
+                    )
+                    .with_diagnostics(serde_json::json!({
+                        "contributing_engines": contributing_engines,
+                        "unresponsive_engines": search_response.unresponsive_engines,
+                    })),
+                )
                 .map_err(|e| e.to_string())
             }
             Err(e) => {

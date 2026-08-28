@@ -48,9 +48,9 @@ services:
       gateway-data-init:
         condition: service_completed_successfully
       searxng:
-        condition: service_started
+        condition: service_healthy
       firecrawl-api:
-        condition: service_started
+        condition: service_healthy
     networks:
       - research
     restart: unless-stopped
@@ -63,6 +63,12 @@ services:
       - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
     networks:
       - research
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz | grep -q '^OK$'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   firecrawl-api:
@@ -80,11 +86,11 @@ services:
       ENV: local
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       playwright-service:
-        condition: service_started
+        condition: service_healthy
       nuq-postgres:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:
@@ -93,6 +99,12 @@ services:
       - host.docker.internal:host-gateway
     cpus: 4.0
     mem_limit: 8g
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 30s
     ulimits:
       nofile:
         soft: 65535
@@ -110,6 +122,12 @@ services:
     mem_limit: 4g
     tmpfs:
       - /tmp/.cache:noexec,nosuid,size=1g
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   redis:
@@ -117,6 +135,11 @@ services:
     command: redis-server --bind 0.0.0.0
     networks:
       - research
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
 
   rabbitmq:
@@ -140,6 +163,12 @@ services:
       POSTGRES_DB: postgres
     networks:
       - research
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
 networks:

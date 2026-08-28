@@ -11,6 +11,9 @@ pub struct Metrics {
     pub backend_latency: HistogramVec,
     pub browser_sessions_active: IntGauge,
     pub policy_denials: IntCounterVec,
+    pub search_engine_events: IntCounterVec,
+    pub evidence_candidates: IntCounterVec,
+    pub evidence_bundle_duration: HistogramVec,
 }
 
 impl Metrics {
@@ -41,16 +44,43 @@ impl Metrics {
             ),
             &["reason"],
         )?;
+        let search_engine_events = IntCounterVec::new(
+            Opts::new(
+                "web_research_search_engine_events_total",
+                "Search engine contribution and failure events",
+            ),
+            &["engine", "outcome"],
+        )?;
+        let evidence_candidates = IntCounterVec::new(
+            Opts::new(
+                "web_research_evidence_candidates_total",
+                "Evidence candidates by pipeline stage and outcome",
+            ),
+            &["stage", "outcome"],
+        )?;
+        let evidence_bundle_duration = HistogramVec::new(
+            histogram_opts!(
+                "web_research_evidence_bundle_duration_seconds",
+                "End-to-end evidence bundle duration by outcome"
+            ),
+            &["outcome"],
+        )?;
         registry.register(Box::new(tool_calls.clone()))?;
         registry.register(Box::new(backend_latency.clone()))?;
         registry.register(Box::new(browser_sessions_active.clone()))?;
         registry.register(Box::new(policy_denials.clone()))?;
+        registry.register(Box::new(search_engine_events.clone()))?;
+        registry.register(Box::new(evidence_candidates.clone()))?;
+        registry.register(Box::new(evidence_bundle_duration.clone()))?;
         Ok(Self {
             registry,
             tool_calls,
             backend_latency,
             browser_sessions_active,
             policy_denials,
+            search_engine_events,
+            evidence_candidates,
+            evidence_bundle_duration,
         })
     }
 

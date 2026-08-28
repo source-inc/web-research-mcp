@@ -1,0 +1,67 @@
+[
+  {
+    "name": "crypto momentum rejects observed generic results",
+    "query": "time series momentum cryptocurrency academic study",
+    "hits": [
+      {
+        "rank": 1,
+        "url": "https://time.is/",
+        "title": "Time.is - exact time, any time zone",
+        "snippet": "Current time worldwide",
+        "engine": "bing"
+      },
+      {
+        "rank": 2,
+        "url": "https://link.springer.com/article/crypto-momentum",
+        "title": "Time-series momentum and market timing in Bitcoin",
+        "snippet": "An empirical academic study of cryptocurrency momentum strategies",
+        "engine": "privacywall"
+      },
+      {
+        "rank": 3,
+        "url": "https://coinmarketcap.com/",
+        "title": "Cryptocurrency Prices and Market Capitalizations",
+        "snippet": "Live cryptocurrency prices",
+        "engine": "bing"
+      },
+      {
+        "rank": 4,
+        "url": "https://research.example.edu/bitcoin-momentum",
+        "title": "Bitcoin intraday time series momentum",
+        "snippet": "Research paper studying momentum effects in cryptocurrency markets",
+        "engine": "fynd"
+      }
+    ],
+    "required_top_domains": ["link.springer.com", "research.example.edu"],
+    "rejected_urls": ["https://time.is/", "https://coinmarketcap.com/"]
+  },
+  {
+    "name": "protocol search rejects three-dimensional model ambiguity",
+    "query": "Model Context Protocol official specification tooling",
+    "hits": [
+      {
+        "rank": 1,
+        "url": "https://sketchfab.com/3d-models/popular",
+        "title": "Popular 3D models",
+        "snippet": "Explore downloadable models and art assets",
+        "engine": "bing"
+      },
+      {
+        "rank": 2,
+        "url": "https://modelcontextprotocol.io/specification/tools",
+        "title": "Tools - Model Context Protocol specification",
+        "snippet": "The protocol specification for schema-described tools exposed by MCP servers",
+        "engine": "privacywall"
+      },
+      {
+        "rank": 3,
+        "url": "https://github.com/modelcontextprotocol/specification",
+        "title": "Model Context Protocol specification",
+        "snippet": "Source repository for the Model Context Protocol specification and schema",
+        "engine": "github"
+      }
+    ],
+    "required_top_domains": ["modelcontextprotocol.io", "github.com"],
+    "rejected_urls": ["https://sketchfab.com/3d-models/popular"]
+  }
+]

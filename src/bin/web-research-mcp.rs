@@ -134,8 +134,39 @@ async fn smoke(config: Config, backend: &str) -> Result<()> {
                 config.backends.searxng.endpoint.clone(),
                 std::time::Duration::from_secs(10),
             )?;
-            let results = c.search("rust", 3, None, None, None).await?;
-            println!("searxng OK: {} results", results.len());
+            let response = c
+                .search(
+                    "Rust async trait official documentation",
+                    10,
+                    Some("general,it"),
+                    Some("en"),
+                    None,
+                )
+                .await?;
+            if response.results.is_empty() {
+                anyhow::bail!(
+                    "SearXNG returned no results; unresponsive engines: {:?}",
+                    response.unresponsive_engines
+                );
+            }
+            let engines = response
+                .results
+                .iter()
+                .flat_map(|result| {
+                    if result.engines.is_empty() {
+                        vec![result.engine.as_str()]
+                    } else {
+                        result.engines.iter().map(String::as_str).collect()
+                    }
+                })
+                .filter(|engine| !engine.is_empty())
+                .collect::<std::collections::BTreeSet<_>>();
+            println!(
+                "searxng OK: {} results from {}; {} unresponsive",
+                response.results.len(),
+                engines.into_iter().collect::<Vec<_>>().join(", "),
+                response.unresponsive_engines.len()
+            );
         }
         "firecrawl" => {
             let c = FirecrawlClient::new(

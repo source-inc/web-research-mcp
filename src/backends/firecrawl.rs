@@ -30,6 +30,7 @@ pub struct FirecrawlClient {
     http: reqwest::Client,
     endpoint: String,
     api_key: Option<String>,
+    timeout: Duration,
 }
 
 impl FirecrawlClient {
@@ -42,6 +43,7 @@ impl FirecrawlClient {
             http: build_http_client(timeout)?,
             endpoint,
             api_key,
+            timeout,
         })
     }
 
@@ -68,7 +70,7 @@ impl FirecrawlClient {
             .auth(self.http.post(self.url("/v1/scrape")).json(&body))
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -141,7 +143,7 @@ impl FirecrawlClient {
             .auth(self.http.post(self.url("/v1/map")).json(&body))
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -185,7 +187,7 @@ impl FirecrawlClient {
             .auth(self.http.post(self.url("/v1/crawl")).json(&body))
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -219,7 +221,7 @@ impl FirecrawlClient {
                 .auth(self.http.get(&poll_url))
                 .send()
                 .await
-                .map_err(transport_or_timeout)?;
+                .map_err(|error| transport_or_timeout(error, self.timeout))?;
             let poll_status = poll_resp.status();
             if !poll_status.is_success() {
                 return Err(BackendError::Http {
@@ -260,7 +262,7 @@ impl FirecrawlClient {
                             .auth(self.http.get(nurl))
                             .send()
                             .await
-                            .map_err(transport_or_timeout)?;
+                            .map_err(|error| transport_or_timeout(error, self.timeout))?;
                         if !page_resp.status().is_success() {
                             break;
                         }
@@ -326,9 +328,9 @@ fn collect_pages(body: &serde_json::Value, out: &mut Vec<ScrapeResult>) {
     }
 }
 
-fn transport_or_timeout(e: reqwest::Error) -> BackendError {
+fn transport_or_timeout(e: reqwest::Error, timeout: Duration) -> BackendError {
     if e.is_timeout() {
-        BackendError::Timeout(Duration::from_secs(0))
+        BackendError::Timeout(timeout)
     } else {
         BackendError::Transport(e.to_string())
     }

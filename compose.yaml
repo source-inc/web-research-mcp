@@ -17,7 +17,7 @@ x-firecrawl-env: &firecrawl-env
 
 services:
   gateway-data-init:
-    image: ${WEB_RESEARCH_MCP_IMAGE:-ghcr.io/source-inc/web-research-mcp:0.1.6@sha256:d5d9a4616d6f16d198b1b10b3e0c475e04cf0cf70dbbd0f32e8315cf8c13cb9a}
+    image: ${WEB_RESEARCH_MCP_IMAGE:-ghcr.io/source-inc/web-research-mcp:0.1.10@sha256:7600085842b84754d3ee5b95945fdcada02286311f6b757fca33a7d32fa126da}
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
     command: ["chown -R 10001:10001 /var/lib/web-research-mcp"]
@@ -28,7 +28,7 @@ services:
     restart: "no"
 
   gateway:
-    image: ${WEB_RESEARCH_MCP_IMAGE:-ghcr.io/source-inc/web-research-mcp:0.1.6@sha256:d5d9a4616d6f16d198b1b10b3e0c475e04cf0cf70dbbd0f32e8315cf8c13cb9a}
+    image: ${WEB_RESEARCH_MCP_IMAGE:-ghcr.io/source-inc/web-research-mcp:0.1.10@sha256:7600085842b84754d3ee5b95945fdcada02286311f6b757fca33a7d32fa126da}
     environment:
       WEB_RESEARCH_MCP_HTTP_BIND_ADDR: 0.0.0.0
       WEB_RESEARCH_MCP_HTTP_PORT: "9213"

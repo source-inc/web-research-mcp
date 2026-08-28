@@ -663,7 +663,11 @@ fn verification_quote(excerpt: &str) -> String {
             .chars()
             .next()
             .is_none_or(|next| next.is_whitespace() || next == '[');
-        if is_sentence_boundary {
+        let prefix = source[..end].to_ascii_lowercase();
+        let is_common_abbreviation = ["e.g.", "i.e.", "mr.", "mrs.", "ms.", "dr.", "prof."]
+            .iter()
+            .any(|suffix| prefix.ends_with(suffix));
+        if is_sentence_boundary && !is_common_abbreviation {
             return source[..end].trim_end().to_string();
         }
     }
@@ -1007,6 +1011,15 @@ mod tests {
         let line = format!(
             "{sentence}[\u{00b6}](https://www.rfc-editor.org/rfc/rfc8707.html#section-abstract)"
         );
+        let quote = verification_quote(&line);
+        assert_eq!(quote, sentence);
+        assert!(line.contains(&quote));
+    }
+
+    #[test]
+    fn exact_quote_does_not_stop_at_common_abbreviation() {
+        let sentence = "The confirmation dialog does not show the full tool input (e.g. an included SSH key is completely hidden).";
+        let line = format!("{sentence} The next sentence should not be selected.");
         let quote = verification_quote(&line);
         assert_eq!(quote, sentence);
         assert!(line.contains(&quote));

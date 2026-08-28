@@ -219,7 +219,9 @@ pub(crate) fn rank_candidates(queries: &[String], searches: &[Vec<SearchHit>]) -
             .collect::<HashSet<_>>();
         if title.len() >= 3
             && accepted_titles.iter().any(|(domain, accepted)| {
-                domain == &candidate.domain && title_similarity(&title, accepted) >= 0.8
+                let similarity = title_similarity(&title, accepted);
+                (domain == &candidate.domain || domains_share_brand(domain, &candidate.domain))
+                    && similarity >= 0.8
             })
         {
             rejected.push(CandidateRejection {
@@ -254,11 +256,38 @@ pub(crate) fn rank_candidates(queries: &[String], searches: &[Vec<SearchHit>]) -
             true
         }
     });
+    let candidates = diversify_by_query(queries, candidates);
 
     CandidateRanking {
         candidates,
         rejected,
     }
+}
+
+fn diversify_by_query(
+    queries: &[String],
+    mut candidates: Vec<RankedCandidate>,
+) -> Vec<RankedCandidate> {
+    let mut ordered = Vec::with_capacity(candidates.len());
+    loop {
+        let before = ordered.len();
+        for query in queries {
+            let Some(position) = candidates
+                .iter()
+                .position(|candidate| candidate.matched_queries.contains(query))
+            else {
+                continue;
+            };
+            ordered.push(candidates.remove(position));
+        }
+        if ordered.len() == before {
+            break;
+        }
+    }
+    // Defensive fallback for future candidate sources without query
+    // attribution. Keep their existing score order instead of dropping them.
+    ordered.extend(candidates);
+    ordered
 }
 
 pub(crate) fn assess_content(
@@ -437,6 +466,34 @@ fn title_similarity(left: &HashSet<String>, right: &HashSet<String>) -> f64 {
     // relationship while the minimum title length above avoids generic titles.
     let containment = left.intersection(right).count() as f64 / smaller as f64;
     containment.max(jaccard(left, right))
+}
+
+fn domains_share_brand(left: &str, right: &str) -> bool {
+    let brand_terms = |domain: &str| {
+        domain
+            .split('.')
+            .filter(|label| {
+                !matches!(
+                    *label,
+                    "blog"
+                        | "co"
+                        | "com"
+                        | "docs"
+                        | "edu"
+                        | "info"
+                        | "io"
+                        | "net"
+                        | "org"
+                        | "research"
+                        | "www"
+                )
+            })
+            .map(str::to_string)
+            .collect::<HashSet<_>>()
+    };
+    let left = brand_terms(left);
+    let right = brand_terms(right);
+    !left.is_disjoint(&right)
 }
 
 fn normalize_url(raw: &str) -> Result<(String, String), String> {
@@ -842,6 +899,71 @@ mod tests {
             .rejected
             .iter()
             .any(|item| item.reason == "near_duplicate_title"));
+    }
+
+    #[test]
+    fn rejects_near_identical_titles_across_mirror_domains() {
+        let query = "Model Context Protocol authorization specification guidance".to_string();
+        let searches = vec![vec![
+            hit(
+                1,
+                "https://modelcontextprotocol.io/specification/authorization",
+                "Authorization - Model Context Protocol",
+                "Model Context Protocol authorization specification and guidance",
+                "privacywall",
+            ),
+            hit(
+                2,
+                "https://modelcontextprotocol.info/specification/authorization",
+                "Authorization - Model Context Protocol (MCP)",
+                "A mirror of the Model Context Protocol authorization specification",
+                "fynd",
+            ),
+        ]];
+        let ranked = rank_candidates(&[query], &searches);
+        assert_eq!(ranked.candidates.len(), 1);
+        assert!(ranked
+            .rejected
+            .iter()
+            .any(|item| item.reason == "near_duplicate_title"));
+    }
+
+    #[test]
+    fn covers_each_planned_query_before_filling_more_slots() {
+        let queries = vec![
+            "Model Context Protocol authorization specification requirements".to_string(),
+            "Model Context Protocol prompt injection independent analysis".to_string(),
+        ];
+        let searches = vec![
+            vec![
+                hit(
+                    1,
+                    "https://spec.example.org/authorization",
+                    "Model Context Protocol authorization specification",
+                    "Normative authorization requirements for protocol deployments",
+                    "privacywall",
+                ),
+                hit(
+                    2,
+                    "https://deployment.guide.org/authorization",
+                    "Model Context Protocol authorization deployment guide",
+                    "Implementation guidance for authorization requirements",
+                    "fynd",
+                ),
+            ],
+            vec![hit(
+                1,
+                "https://security.example.org/mcp-injection",
+                "Model Context Protocol prompt injection analysis",
+                "Independent security analysis of prompt injection risks",
+                "bing",
+            )],
+        ];
+        let ranked = rank_candidates(&queries, &searches);
+        assert_eq!(ranked.candidates.len(), 3);
+        assert!(ranked.candidates[0].matched_queries.contains(&queries[0]));
+        assert!(ranked.candidates[1].matched_queries.contains(&queries[1]));
+        assert!(ranked.candidates[2].matched_queries.contains(&queries[0]));
     }
 
     #[test]

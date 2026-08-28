@@ -649,6 +649,24 @@ fn verification_quote(excerpt: &str) -> String {
         .map(str::trim)
         .find(|line| line.chars().count() >= 80)
         .unwrap_or_else(|| excerpt.trim());
+    let mut character_count = 0usize;
+    for (index, character) in source.char_indices() {
+        character_count += 1;
+        if character_count > 320 {
+            break;
+        }
+        if character_count < 80 || !matches!(character, '.' | '!' | '?') {
+            continue;
+        }
+        let end = index + character.len_utf8();
+        let is_sentence_boundary = source[end..]
+            .chars()
+            .next()
+            .is_none_or(|next| next.is_whitespace() || next == '[');
+        if is_sentence_boundary {
+            return source[..end].trim_end().to_string();
+        }
+    }
     take_chars(source, 320).trim_end().to_string()
 }
 
@@ -981,6 +999,17 @@ mod tests {
         assert!(assessment.excerpt.contains("schema-described functions"));
         assert!(body.contains(&assessment.verification_quote));
         assert!(assessment.relevance_score >= MIN_CONTENT_SCORE);
+    }
+
+    #[test]
+    fn exact_quote_stops_before_markdown_permalink() {
+        let sentence = "This document specifies an extension to the OAuth 2.0 Authorization Framework defining request parameters that let a client identify the protected resource.";
+        let line = format!(
+            "{sentence}[\u{00b6}](https://www.rfc-editor.org/rfc/rfc8707.html#section-abstract)"
+        );
+        let quote = verification_quote(&line);
+        assert_eq!(quote, sentence);
+        assert!(line.contains(&quote));
     }
 
     #[test]

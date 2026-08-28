@@ -36,6 +36,13 @@ pub struct AuditRecord {
     pub recorded_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResearchBundleRecord {
+    pub assignment_id: String,
+    pub request_hash: String,
+    pub response_json: String,
+}
+
 #[derive(Clone)]
 pub struct Store {
     backend: Arc<StoreBackend>,
@@ -55,6 +62,9 @@ impl Store {
         tokio::fs::create_dir_all(root.join("audits"))
             .await
             .with_context(|| format!("creating {}/audits", root.display()))?;
+        tokio::fs::create_dir_all(root.join("bundles"))
+            .await
+            .with_context(|| format!("creating {}/bundles", root.display()))?;
         Ok(Self {
             backend: Arc::new(StoreBackend::Disk { root }),
         })
@@ -107,6 +117,38 @@ impl Store {
         .await
     }
 
+    pub async fn write_research_bundle(&self, rec: &ResearchBundleRecord) -> Result<()> {
+        let StoreBackend::Disk { root } = self.backend.as_ref() else {
+            return Ok(());
+        };
+        write_json(
+            root.join("bundles").join(bundle_key(&rec.assignment_id)),
+            rec,
+        )
+        .await
+    }
+
+    pub async fn read_research_bundle(
+        &self,
+        assignment_id: &str,
+    ) -> Result<Option<ResearchBundleRecord>> {
+        let StoreBackend::Disk { root } = self.backend.as_ref() else {
+            return Ok(None);
+        };
+        let path = root.join("bundles").join(bundle_key(assignment_id));
+        let bytes = match tokio::fs::read(&path).await {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
+        };
+        let record: ResearchBundleRecord = serde_json::from_slice(&bytes)
+            .with_context(|| format!("decoding {}", path.display()))?;
+        if record.assignment_id != assignment_id {
+            anyhow::bail!("research bundle key collision");
+        }
+        Ok(Some(record))
+    }
+
     pub fn new_fetch_id() -> String {
         Uuid::new_v4().to_string()
     }
@@ -120,6 +162,13 @@ impl Store {
         hasher.update(body);
         format!("sha256:{:x}", hasher.finalize())
     }
+}
+
+fn bundle_key(assignment_id: &str) -> String {
+    format!(
+        "{}.json",
+        Store::content_hash(assignment_id.as_bytes()).replace(':', "-")
+    )
 }
 
 async fn write_json(path: PathBuf, value: &impl Serialize) -> Result<()> {
@@ -173,6 +222,29 @@ mod tests {
             .expect("fetch exists");
         assert_eq!(loaded.content_hash, record.content_hash);
         assert_eq!(loaded.content_markdown, "hello");
+    }
+
+    #[tokio::test]
+    async fn disk_store_round_trips_colon_scoped_research_bundles() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let store = Store::disk(dir.path()).await.expect("disk store");
+        let record = ResearchBundleRecord {
+            assignment_id: "run-id:primary-evidence".into(),
+            request_hash: "sha256:request".into(),
+            response_json: r#"{"content":{"source_count":4}}"#.into(),
+        };
+        store
+            .write_research_bundle(&record)
+            .await
+            .expect("write bundle");
+        let loaded = store
+            .read_research_bundle(&record.assignment_id)
+            .await
+            .expect("read bundle")
+            .expect("bundle exists");
+        assert_eq!(loaded.assignment_id, record.assignment_id);
+        assert_eq!(loaded.request_hash, record.request_hash);
+        assert_eq!(loaded.response_json, record.response_json);
     }
 
     #[test]

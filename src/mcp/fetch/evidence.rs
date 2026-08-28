@@ -158,6 +158,10 @@ impl WebResearchMcp {
     ) -> Result<String, String> {
         let audit_id = Store::new_audit_id();
         let now = Utc::now();
+        self.metrics
+            .tool_calls
+            .with_label_values(&[tool, "ok"])
+            .inc();
         let _ = self
             .store
             .write_audit(&AuditRecord {

@@ -27,6 +27,7 @@ documents.
 
 | Family | Tools | Default |
 | --- | --- | --- |
+| Bounded research | `web_collect_evidence` | enabled |
 | Search | `web_search` | enabled |
 | Extract | `web_scrape_url`, `web_map_site` | enabled |
 | Evidence | `web_get_fetch`, `web_find_in_fetch`, `web_verify_quote` | enabled |
@@ -36,6 +37,13 @@ documents.
 Every successful scrape returns `fetch_id`, `content_hash`, final URL, byte
 count, and a nonce-delimited untrusted-content envelope. Important quotations
 should be checked with `web_verify_quote` immediately before citation.
+
+`web_collect_evidence` is the preferred boundary for autonomous research. A
+caller supplies a stable assignment ID and 1–6 planned queries; the gateway
+deduplicates their candidates, attempts no more than 12 scrapes, and returns at
+most 8 persisted evidence records, each with a short exact excerpt verified
+against its stored fetch and hash. The assignment is idempotent: retries with
+the same inputs reuse the stored bundle, while conflicting inputs are rejected.
 
 ## Quick start
 

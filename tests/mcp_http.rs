@@ -84,6 +84,7 @@ async fn mcp_accepts_non_loopback_host_headers() -> anyhow::Result<()> {
 
     assert_eq!(tools.status(), StatusCode::OK);
     let body = tools.text().await?;
+    assert!(body.contains("\"web_collect_evidence\""));
     assert!(body.contains("\"web_search\""));
     assert!(body.contains("\"web_scrape_url\""));
     assert!(body.contains("\"browser_open\""));

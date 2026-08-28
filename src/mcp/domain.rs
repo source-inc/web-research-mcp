@@ -25,7 +25,7 @@ pub struct WebSearchArgs {
     pub exclude_domains: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchHit {
     pub rank: usize,
     pub url: String,
@@ -34,6 +34,30 @@ pub struct SearchHit {
     pub engine: String,
     pub score: Option<f64>,
     pub published_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct WebCollectEvidenceArgs {
+    /// Stable caller-owned assignment identifier. Repeated calls with the same
+    /// identifier and inputs return the persisted bundle without contacting the
+    /// web again.
+    pub assignment_id: String,
+    /// Distinct search queries to execute. The gateway accepts 1 through 6.
+    pub queries: Vec<String>,
+    /// Maximum number of successfully fetched, deduplicated sources to return.
+    /// Defaults to 6 and is capped at 8.
+    #[serde(default)]
+    pub max_sources: Option<usize>,
+    /// Optional freshness window applied to every search: "day", "month", or
+    /// "year".
+    #[serde(default)]
+    pub time_range: Option<String>,
+    /// Restrict every search to these domains.
+    #[serde(default)]
+    pub include_domains: Vec<String>,
+    /// Exclude these domains from every search.
+    #[serde(default)]
+    pub exclude_domains: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

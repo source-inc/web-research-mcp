@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+compose=(docker compose --project-directory "${repo_dir}" -f "${repo_dir}/compose.yaml")
+command="${1:-up}"
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "required command not found: $1" >&2
+    exit 1
+  fi
+}
+
+show_failure() {
+  "${compose[@]}" ps || true
+  "${compose[@]}" logs --no-color --tail 200 gateway searxng firecrawl-api || true
+}
+
+wait_until_ready() {
+  local port="${WEB_RESEARCH_MCP_PORT:-9213}"
+  local endpoint="http://127.0.0.1:${port}"
+  local attempt
+
+  for attempt in $(seq 1 90); do
+    if curl --fail --silent --show-error --max-time 5 "${endpoint}/healthz" >/dev/null \
+      && "${compose[@]}" exec -T gateway /usr/local/bin/service smoke --backend searxng \
+      && "${compose[@]}" exec -T gateway /usr/local/bin/service smoke --backend firecrawl; then
+      echo
+      echo "web-research-mcp is ready"
+      echo "MCP endpoint: ${endpoint}/mcp"
+      echo "Health:       ${endpoint}/healthz"
+      echo "Metrics:      ${endpoint}/metrics"
+      return 0
+    fi
+    echo "waiting for the real search/extraction stack (${attempt}/90)"
+    sleep 10
+  done
+
+  echo "web-research-mcp did not become ready" >&2
+  show_failure
+  return 1
+}
+
+case "${command}" in
+  up)
+    require_command docker
+    require_command curl
+    if [[ -n "${WEB_RESEARCH_MCP_IMAGE:-}" ]]; then
+      "${compose[@]}" up --detach --pull never
+    else
+      "${compose[@]}" up --detach --pull always
+    fi
+    wait_until_ready
+    ;;
+  down)
+    require_command docker
+    "${compose[@]}" down --remove-orphans
+    ;;
+  reset)
+    require_command docker
+    "${compose[@]}" down --volumes --remove-orphans
+    ;;
+  status)
+    require_command docker
+    "${compose[@]}" ps
+    ;;
+  logs)
+    require_command docker
+    "${compose[@]}" logs --follow --tail 200
+    ;;
+  *)
+    echo "usage: $0 {up|down|reset|status|logs}" >&2
+    exit 2
+    ;;
+esac

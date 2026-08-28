@@ -45,20 +45,47 @@ most 8 persisted evidence records, each with a short exact excerpt verified
 against its stored fetch and hash. The assignment is idempotent: retries with
 the same inputs reuse the stored bundle, while conflicting inputs are rejected.
 
-## Quick start
+## Quick start: complete local stack
 
-Run the gateway against real SearXNG and Firecrawl services:
+The repository has one entrypoint for the complete real search and extraction
+stack:
+
+```sh
+git clone https://github.com/source-inc/web-research-mcp.git
+cd web-research-mcp
+./scripts/stack up
+```
+
+It starts the released gateway image, SearXNG, Firecrawl, Playwright, and
+Firecrawl's Redis, RabbitMQ, and PostgreSQL dependencies. It returns only after
+the gateway health check and real SearXNG and Firecrawl smoke checks pass. The
+MCP endpoint is then `http://127.0.0.1:9213/mcp`.
+
+The full stack reserves roughly 12 GB of memory; allow 14–16 GB for Docker.
+Only the gateway is published, and it is bound to loopback. Evidence is kept in
+a named Docker volume across ordinary stops.
+
+```sh
+./scripts/stack status       # show containers
+./scripts/stack logs         # follow logs
+./scripts/stack down         # stop; retain evidence volume
+./scripts/stack reset        # stop and delete the evidence volume
+```
+
+Set `WEB_RESEARCH_MCP_PORT` to change the loopback port. Set
+`WEB_RESEARCH_MCP_IMAGE` to test a locally built image; the entrypoint otherwise
+pulls the immutable released image pinned in `compose.yaml`.
+
+To run only the gateway binary against backend services you already operate:
 
 ```sh
 cargo run -- serve
 ```
 
-The default backend endpoints are:
-
-- SearXNG: `http://127.0.0.1:9210`
-- Firecrawl: `http://127.0.0.1:9211`
-- Camoufox: `http://127.0.0.1:9212`
-- MCP gateway: `http://127.0.0.1:9213/mcp`
+Its default backend endpoints are SearXNG on `http://127.0.0.1:9210`,
+Firecrawl on `http://127.0.0.1:9211`, optional Camoufox on
+`http://127.0.0.1:9212`, and the MCP gateway on
+`http://127.0.0.1:9213/mcp`.
 
 ## Configuration
 

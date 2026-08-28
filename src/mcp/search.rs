@@ -108,11 +108,19 @@ impl WebResearchMcp {
             .backend_latency
             .with_label_values(&["searxng", "search"])
             .start_timer();
+        // Search operators are advisory to upstream engines. Pull a bounded
+        // candidate window when domain rules are present, then enforce those
+        // rules locally before returning anything to the caller.
+        let backend_max = if args.include_domains.is_empty() && args.exclude_domains.is_empty() {
+            max
+        } else {
+            max.saturating_mul(8).min(64)
+        };
         let res = self
             .searxng
             .search(
                 &search_query,
-                max,
+                backend_max,
                 args.categories.as_deref(),
                 args.language.as_deref(),
                 args.time_range.as_deref(),
@@ -123,6 +131,8 @@ impl WebResearchMcp {
             Ok(hits) => {
                 let mapped: Vec<SearchHit> = hits
                     .into_iter()
+                    .filter(|hit| domain_rules_allow(&hit.url, &args))
+                    .take(max)
                     .enumerate()
                     .map(|(index, h)| SearchHit {
                         rank: index + 1,
@@ -229,6 +239,28 @@ fn checked_domain(domain: &str) -> Result<&str, String> {
     Ok(domain)
 }
 
+fn domain_rules_allow(url: &str, args: &WebSearchArgs) -> bool {
+    if args.include_domains.is_empty() && args.exclude_domains.is_empty() {
+        return true;
+    }
+    let Ok(url) = url::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_end_matches('.');
+    let matches = |domain: &str| {
+        let domain = domain.trim().trim_start_matches("*.").trim_end_matches('.');
+        host.eq_ignore_ascii_case(domain)
+            || host
+                .strip_suffix(domain)
+                .is_some_and(|prefix| prefix.ends_with('.'))
+    };
+    (args.include_domains.is_empty() || args.include_domains.iter().any(|domain| matches(domain)))
+        && !args.exclude_domains.iter().any(|domain| matches(domain))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,5 +280,44 @@ mod tests {
             search_query(&args).unwrap(),
             "agent research (site:example.com OR site:docs.rs) -site:spam.test"
         );
+    }
+
+    fn args_with_domains(includes: &[&str], excludes: &[&str]) -> WebSearchArgs {
+        WebSearchArgs {
+            query: "test".into(),
+            max_results: None,
+            categories: None,
+            language: None,
+            time_range: None,
+            include_domains: includes.iter().map(|value| (*value).into()).collect(),
+            exclude_domains: excludes.iter().map(|value| (*value).into()).collect(),
+        }
+    }
+
+    #[test]
+    fn domain_rules_are_a_hard_post_search_boundary() {
+        let args = args_with_domains(&["nice.org.uk", "pmc.ncbi.nlm.nih.gov"], &[]);
+        assert!(domain_rules_allow(
+            "https://pmc.ncbi.nlm.nih.gov/articles/PMC3898572/",
+            &args
+        ));
+        assert!(domain_rules_allow(
+            "https://sub.nice.org.uk/guidance/ng59",
+            &args
+        ));
+        assert!(!domain_rules_allow("https://www.nice.com/", &args));
+        assert!(!domain_rules_allow(
+            "https://nice.org.uk.example.test/",
+            &args
+        ));
+        assert!(!domain_rules_allow("not a URL", &args));
+    }
+
+    #[test]
+    fn exclusion_rules_cover_the_domain_and_its_subdomains() {
+        let args = args_with_domains(&[], &["spam.test"]);
+        assert!(!domain_rules_allow("https://spam.test/page", &args));
+        assert!(!domain_rules_allow("https://deep.spam.test/page", &args));
+        assert!(domain_rules_allow("https://notspam.test/page", &args));
     }
 }

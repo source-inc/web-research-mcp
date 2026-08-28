@@ -60,6 +60,8 @@ It starts the released gateway image, SearXNG, Firecrawl, Playwright, and
 Firecrawl's Redis, RabbitMQ, and PostgreSQL dependencies. It returns only after
 the gateway health check and real SearXNG and Firecrawl smoke checks pass. The
 MCP endpoint is then `http://127.0.0.1:9213/mcp`.
+That loopback URL is for clients running on the host. A client joined to the
+Compose `research` network should use `http://gateway:9213/mcp` instead.
 
 The full stack reserves roughly 12 GB of memory; allow 14–16 GB for Docker.
 Only the gateway is published, and it is bound to loopback. Evidence is kept in

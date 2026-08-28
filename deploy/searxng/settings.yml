@@ -6,7 +6,6 @@ use_default_settings:
       - bing
       - fynd
       - privacywall
-      - mwmbl
       - wikipedia
       # Open scholarly indexes, selected for research-oriented queries.
       - arxiv
@@ -55,9 +54,6 @@ engines:
     disabled: false
   - name: privacywall
     disabled: false
-  - name: mwmbl
-    disabled: false
-    timeout: 4.0
   - name: wikipedia
     disabled: false
   - name: arxiv

@@ -14,15 +14,30 @@ pub struct SearxResult {
     #[serde(default)]
     pub engine: String,
     #[serde(default)]
+    pub engines: Vec<String>,
+    #[serde(default)]
     pub score: Option<f64>,
     #[serde(default, rename = "publishedDate", alias = "published_date")]
     pub published_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SearxEngineError {
+    pub engine: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SearxSearchResponse {
+    pub results: Vec<SearxResult>,
+    pub unresponsive_engines: Vec<SearxEngineError>,
 }
 
 #[derive(Clone)]
 pub struct SearxngClient {
     http: reqwest::Client,
     endpoint: String,
+    timeout: Duration,
 }
 
 impl SearxngClient {
@@ -30,6 +45,7 @@ impl SearxngClient {
         Ok(Self {
             http: build_http_client(timeout)?,
             endpoint,
+            timeout,
         })
     }
 
@@ -40,7 +56,7 @@ impl SearxngClient {
         categories: Option<&str>,
         language: Option<&str>,
         time_range: Option<&str>,
-    ) -> Result<Vec<SearxResult>, BackendError> {
+    ) -> Result<SearxSearchResponse, BackendError> {
         let mut req = self
             .http
             .get(format!("{}/search", self.endpoint.trim_end_matches('/')))
@@ -57,7 +73,7 @@ impl SearxngClient {
 
         let resp = req.send().await.map_err(|e| {
             if e.is_timeout() {
-                BackendError::Timeout(Duration::from_secs(0))
+                BackendError::Timeout(self.timeout)
             } else {
                 BackendError::Transport(e.to_string())
             }
@@ -86,6 +102,22 @@ impl SearxngClient {
             .take(max_results)
             .filter_map(|v| serde_json::from_value(v.clone()).ok())
             .collect();
-        Ok(parsed)
+        let unresponsive_engines = body
+            .get("unresponsive_engines")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| {
+                let pair = entry.as_array()?;
+                Some(SearxEngineError {
+                    engine: pair.first()?.as_str()?.to_string(),
+                    reason: pair.get(1)?.as_str()?.to_string(),
+                })
+            })
+            .collect();
+        Ok(SearxSearchResponse {
+            results: parsed,
+            unresponsive_engines,
+        })
     }
 }

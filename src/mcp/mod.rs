@@ -28,6 +28,7 @@ pub(crate) mod browser;
 pub(crate) mod bundle;
 pub(crate) mod domain;
 pub(crate) mod fetch;
+pub(crate) mod relevance;
 pub(crate) mod search;
 
 pub use domain::{

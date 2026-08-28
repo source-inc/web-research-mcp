@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
+use std::time::Instant;
 
 use chrono::Utc;
 use rmcp::{
@@ -9,6 +10,7 @@ use serde::Serialize;
 use crate::envelope::{Source, UntrustedEnvelope};
 use crate::store::{ResearchBundleRecord, Store};
 
+use super::relevance::{assess_content, categories_for_query, rank_candidates, CandidateRejection};
 use super::{
     domain::{SearchHit, WebCollectEvidenceArgs, WebScrapeArgs, WebSearchArgs, WebVerifyQuoteArgs},
     error_envelope, WebResearchMcp,
@@ -18,8 +20,8 @@ const MAX_QUERIES: usize = 6;
 const DEFAULT_SOURCES: usize = 6;
 const MAX_SOURCES: usize = 8;
 const MAX_SCRAPE_ATTEMPTS: usize = 12;
-const SEARCH_RESULTS_PER_QUERY: usize = 8;
-const EXCERPT_CHARS: usize = 4_000;
+const SEARCH_RESULTS_PER_QUERY: usize = 20;
+const MAX_REPORTED_REJECTIONS: usize = 40;
 
 #[derive(Debug, Serialize)]
 struct BundleSource {
@@ -32,8 +34,15 @@ struct BundleSource {
     content_hash: String,
     bytes: u64,
     excerpt: String,
+    matched_query: String,
+    retrieval_queries: Vec<String>,
+    search_engines: Vec<String>,
+    candidate_relevance_score: f64,
+    content_relevance_score: f64,
+    extraction_method: &'static str,
     verified_quote: String,
     quote_verified: bool,
+    content_integrity_verified: bool,
 }
 
 #[tool_router(router = bundle_router, vis = "pub(crate)")]
@@ -126,14 +135,16 @@ impl WebResearchMcp {
             return serde_json::to_string_pretty(&cached).map_err(|error| error.to_string());
         }
 
+        let started_at = Instant::now();
         let mut searches = Vec::with_capacity(args.queries.len());
         let mut failures = Vec::new();
+        let mut search_degradation = Vec::new();
         for query in &args.queries {
             let response = self
                 .web_search_inner(WebSearchArgs {
                     query: query.clone(),
                     max_results: Some(SEARCH_RESULTS_PER_QUERY),
-                    categories: None,
+                    categories: categories_for_query(query).map(str::to_string),
                     language: Some("en".into()),
                     time_range: args.time_range.clone(),
                     include_domains: args.include_domains.clone(),
@@ -154,32 +165,42 @@ impl WebResearchMcp {
             let hits: Vec<SearchHit> =
                 serde_json::from_value(value.get("content").cloned().unwrap_or_default())
                     .map_err(|error| error.to_string())?;
+            if let Some(unresponsive) = value.pointer("/diagnostics/unresponsive_engines") {
+                if unresponsive
+                    .as_array()
+                    .is_some_and(|items| !items.is_empty())
+                {
+                    search_degradation.push(serde_json::json!({
+                        "query": query,
+                        "unresponsive_engines": unresponsive,
+                    }));
+                }
+            }
             searches.push(hits);
         }
 
-        let mut candidates = Vec::new();
-        let mut seen_urls = HashSet::new();
-        for rank in 0..SEARCH_RESULTS_PER_QUERY {
-            for hits in &searches {
-                let Some(hit) = hits.get(rank) else {
-                    continue;
-                };
-                if seen_urls.insert(hit.url.clone()) {
-                    candidates.push(hit.clone());
-                }
-            }
-        }
+        let ranking = rank_candidates(&args.queries, &searches);
+        self.metrics
+            .evidence_candidates
+            .with_label_values(&["preview", "accepted"])
+            .inc_by(ranking.candidates.len() as u64);
+        self.metrics
+            .evidence_candidates
+            .with_label_values(&["preview", "rejected"])
+            .inc_by(ranking.rejected.len() as u64);
+        let candidate_count = ranking.candidates.len() + ranking.rejected.len();
+        let mut rejections = ranking.rejected;
 
         let mut sources = Vec::with_capacity(max_sources);
         let mut scrape_attempts = 0usize;
-        for candidate in candidates {
+        for candidate in ranking.candidates {
             if sources.len() >= max_sources || scrape_attempts >= MAX_SCRAPE_ATTEMPTS {
                 break;
             }
             scrape_attempts += 1;
             let response = self
                 .web_scrape_url_inner(WebScrapeArgs {
-                    url: candidate.url.clone(),
+                    url: candidate.hit.url.clone(),
                     mode: Some("static".into()),
                 })
                 .await?;
@@ -188,9 +209,13 @@ impl WebResearchMcp {
             if let Some(error) = value.get("error") {
                 failures.push(serde_json::json!({
                     "operation": "scrape",
-                    "url": candidate.url,
+                    "url": candidate.hit.url,
                     "error": error,
                 }));
+                self.metrics
+                    .evidence_candidates
+                    .with_label_values(&["fetch", "error"])
+                    .inc();
                 continue;
             }
             let content = value.get("content").cloned().unwrap_or_default();
@@ -200,14 +225,45 @@ impl WebResearchMcp {
                 .get("content_markdown")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default();
-            let excerpt = markdown.chars().take(EXCERPT_CHARS).collect::<String>();
+            let final_url = source
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(&candidate.hit.url);
+            let assessment = assess_content(
+                markdown,
+                final_url,
+                &candidate.hit.title,
+                &candidate.matched_queries,
+            );
+            if !assessment.accepted {
+                let reason = assessment.reason.unwrap_or("content_validation_failed");
+                tracing::info!(
+                    assignment_id = %args.assignment_id,
+                    url = %candidate.hit.url,
+                    candidate_score = candidate.score,
+                    content_score = assessment.relevance_score,
+                    reason,
+                    "rejected fetched evidence candidate"
+                );
+                rejections.push(CandidateRejection {
+                    url: candidate.hit.url,
+                    stage: "content",
+                    reason: reason.to_string(),
+                    score: assessment.relevance_score,
+                });
+                self.metrics
+                    .evidence_candidates
+                    .with_label_values(&["content", "rejected"])
+                    .inc();
+                continue;
+            }
             let Some(fetch_id) = provenance
                 .get("fetch_id")
                 .and_then(serde_json::Value::as_str)
             else {
                 failures.push(serde_json::json!({
                     "operation": "scrape",
-                    "url": candidate.url,
+                    "url": candidate.hit.url,
                     "error": "missing fetch_id",
                 }));
                 continue;
@@ -218,12 +274,12 @@ impl WebResearchMcp {
             else {
                 failures.push(serde_json::json!({
                     "operation": "scrape",
-                    "url": candidate.url,
+                    "url": candidate.hit.url,
                     "error": "missing content_hash",
                 }));
                 continue;
             };
-            let verified_quote = verification_quote(markdown);
+            let verified_quote = assessment.verification_quote;
             let quote_verified = if verified_quote.is_empty() {
                 false
             } else {
@@ -243,15 +299,32 @@ impl WebResearchMcp {
                     })
                     .unwrap_or(false)
             };
+            if !quote_verified {
+                rejections.push(CandidateRejection {
+                    url: candidate.hit.url,
+                    stage: "integrity",
+                    reason: "quote_verification_failed".to_string(),
+                    score: assessment.relevance_score,
+                });
+                self.metrics
+                    .evidence_candidates
+                    .with_label_values(&["integrity", "rejected"])
+                    .inc();
+                continue;
+            }
+            tracing::info!(
+                assignment_id = %args.assignment_id,
+                url = %final_url,
+                candidate_score = candidate.score,
+                content_score = assessment.relevance_score,
+                engines = ?candidate.search_engines,
+                "accepted evidence source"
+            );
             sources.push(BundleSource {
-                url: source
-                    .get("url")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or(&candidate.url)
-                    .to_string(),
-                title: candidate.title,
-                snippet: candidate.snippet,
-                published_at: candidate.published_at,
+                url: final_url.to_string(),
+                title: candidate.hit.title,
+                snippet: candidate.hit.snippet,
+                published_at: candidate.hit.published_at,
                 fetched_at: source
                     .get("fetched_at")
                     .and_then(serde_json::Value::as_str)
@@ -263,12 +336,35 @@ impl WebResearchMcp {
                     .get("bytes")
                     .and_then(serde_json::Value::as_u64)
                     .unwrap_or_default(),
-                excerpt,
+                excerpt: assessment.excerpt,
+                matched_query: assessment.matched_query,
+                retrieval_queries: candidate.matched_queries,
+                search_engines: candidate.search_engines,
+                candidate_relevance_score: candidate.score,
+                content_relevance_score: assessment.relevance_score,
+                extraction_method: "firecrawl-selfhosted",
                 verified_quote,
                 quote_verified,
+                content_integrity_verified: quote_verified,
             });
+            self.metrics
+                .evidence_candidates
+                .with_label_values(&["content", "accepted"])
+                .inc();
         }
 
+        let accepted_engines = sources
+            .iter()
+            .flat_map(|source| source.search_engines.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let evidence_shortfall = sources.len() < max_sources;
+        let outcome = if sources.is_empty() {
+            "empty"
+        } else if evidence_shortfall {
+            "shortfall"
+        } else {
+            "complete"
+        };
         let now = Utc::now();
         let response = serde_json::to_string_pretty(&UntrustedEnvelope::new(
             Source {
@@ -281,11 +377,17 @@ impl WebResearchMcp {
                 "assignment_id": args.assignment_id,
                 "cached": false,
                 "search_count": args.queries.len(),
+                "candidate_count": candidate_count,
                 "scrape_attempt_count": scrape_attempts,
                 "source_count": sources.len(),
+                "requested_source_count": max_sources,
+                "evidence_shortfall": evidence_shortfall,
+                "accepted_search_engines": accepted_engines,
                 "queries": args.queries,
                 "sources": sources,
                 "failures": failures,
+                "search_degradation": search_degradation,
+                "rejections": rejections.into_iter().take(MAX_REPORTED_REJECTIONS).collect::<Vec<_>>(),
             }),
             audit_id,
         ))
@@ -302,33 +404,10 @@ impl WebResearchMcp {
             .tool_calls
             .with_label_values(&["web_collect_evidence", "ok"])
             .inc();
+        self.metrics
+            .evidence_bundle_duration
+            .with_label_values(&[outcome])
+            .observe(started_at.elapsed().as_secs_f64());
         Ok(response)
-    }
-}
-
-fn verification_quote(markdown: &str) -> String {
-    let body = markdown
-        .split_once('\n')
-        .map(|(_, body)| body)
-        .unwrap_or(markdown);
-    body.trim_start()
-        .chars()
-        .take(320)
-        .collect::<String>()
-        .trim_end()
-        .to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn verification_quote_skips_the_untrusted_envelope_header_and_is_bounded() {
-        let body = format!("<<<UNTRUSTED_WEB_CONTENT:nonce>>>\n  {}  ", "x".repeat(500));
-        let quote = verification_quote(&body);
-        assert_eq!(quote.len(), 320);
-        assert!(quote.bytes().all(|byte| byte == b'x'));
-        assert!(body.contains(&quote));
     }
 }

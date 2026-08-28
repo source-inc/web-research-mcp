@@ -47,6 +47,7 @@ pub struct CamofoxClient {
     http: reqwest::Client,
     endpoint: String,
     api_key: Option<String>,
+    timeout: Duration,
 }
 
 impl CamofoxClient {
@@ -59,6 +60,7 @@ impl CamofoxClient {
             http: build_http_client(timeout)?,
             endpoint,
             api_key,
+            timeout,
         })
     }
 
@@ -97,7 +99,7 @@ impl CamofoxClient {
             .auth(self.http.post(self.url("/tabs/open")).json(&body))
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             let raw = resp.text().await.unwrap_or_default();
@@ -125,7 +127,7 @@ impl CamofoxClient {
             .auth(self.http.post(self.url("/tabs/open")).json(&body))
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -149,7 +151,7 @@ impl CamofoxClient {
             )
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         if !resp.status().is_success() {
             return Err(BackendError::Http {
                 status: resp.status().as_u16(),
@@ -168,7 +170,7 @@ impl CamofoxClient {
             )
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         json_or_err(resp).await
     }
 
@@ -189,7 +191,7 @@ impl CamofoxClient {
             )
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -223,7 +225,7 @@ impl CamofoxClient {
             )
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -250,7 +252,7 @@ impl CamofoxClient {
             )
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -283,7 +285,7 @@ impl CamofoxClient {
             )
             .send()
             .await
-            .map_err(transport_or_timeout)?;
+            .map_err(|error| transport_or_timeout(error, self.timeout))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(BackendError::Http {
@@ -295,9 +297,9 @@ impl CamofoxClient {
     }
 }
 
-fn transport_or_timeout(e: reqwest::Error) -> BackendError {
+fn transport_or_timeout(e: reqwest::Error, timeout: Duration) -> BackendError {
     if e.is_timeout() {
-        BackendError::Timeout(Duration::from_secs(0))
+        BackendError::Timeout(timeout)
     } else {
         BackendError::Transport(e.to_string())
     }

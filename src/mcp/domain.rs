@@ -32,6 +32,8 @@ pub struct SearchHit {
     pub title: String,
     pub snippet: String,
     pub engine: String,
+    #[serde(default)]
+    pub engines: Vec<String>,
     pub score: Option<f64>,
     pub published_at: Option<String>,
 }

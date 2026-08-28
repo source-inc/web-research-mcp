@@ -1,4 +1,26 @@
-use_default_settings: true
+use_default_settings:
+  engines:
+    keep_only:
+      # General web engines that returned useful results without CAPTCHA,
+      # throttling, or access-denied responses from the pinned Docker fixture.
+      - bing
+      - fynd
+      - privacywall
+      - mwmbl
+      - wikipedia
+      # Open scholarly indexes, selected for research-oriented queries.
+      - arxiv
+      - crossref
+      - google scholar
+      - openalex
+      - openairepublications
+      - pubmed
+      # First-party technical and ecosystem indexes.
+      - github
+      - mdn
+      - stackoverflow
+      - crates.io
+      - microsoft learn
 
 server:
   secret_key: "local-web-research-stack-not-for-production"
@@ -10,17 +32,53 @@ search:
     - html
     - json
 
-# Public engines rate-limit shared container egress independently. Keep a
-# diverse real-engine pool so one CAPTCHA or temporary suspension does not
-# silently turn a successful SearXNG response into an empty research bundle.
+# Bound the merged-search latency inside SearXNG, below the gateway's backend
+# deadline. A slow optional index should be reported as degraded while results
+# from healthy engines are still returned.
+outgoing:
+  request_timeout: 4.0
+  max_request_timeout: 8.0
+  pool_connections: 100
+  pool_maxsize: 20
+
+# Research queries do not need calculators, timezone conversion, translation,
+# or other answer plugins. Keeping only URL cleanup prevents plugin answers and
+# exceptions from entering the candidate pool.
+plugins:
+  searx.plugins.tracker_url_remover.SXNGPlugin:
+    active: true
+
 engines:
   - name: bing
     disabled: false
-  - name: google
+  - name: fynd
     disabled: false
-  - name: qwant
+  - name: privacywall
     disabled: false
-  - name: mojeek
+  - name: mwmbl
     disabled: false
-  - name: yahoo
+    timeout: 4.0
+  - name: wikipedia
+    disabled: false
+  - name: arxiv
+    disabled: false
+  - name: crossref
+    disabled: false
+  - name: google scholar
+    disabled: false
+  - name: openalex
+    disabled: false
+  - name: openairepublications
+    disabled: false
+  - name: pubmed
+    disabled: false
+  - name: github
+    disabled: false
+  - name: mdn
+    disabled: false
+  - name: stackoverflow
+    disabled: false
+  - name: crates.io
+    disabled: false
+  - name: microsoft learn
     disabled: false

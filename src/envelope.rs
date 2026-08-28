@@ -23,6 +23,8 @@ pub struct UntrustedEnvelope<T: Serialize> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provenance: Option<Provenance>,
     pub content: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<serde_json::Value>,
     pub audit_id: String,
 }
 
@@ -46,6 +48,7 @@ impl<T: Serialize> UntrustedEnvelope<T> {
             source,
             provenance: None,
             content,
+            diagnostics: None,
             audit_id,
         }
     }
@@ -61,8 +64,14 @@ impl<T: Serialize> UntrustedEnvelope<T> {
             source,
             provenance: Some(provenance),
             content,
+            diagnostics: None,
             audit_id,
         }
+    }
+
+    pub fn with_diagnostics(mut self, diagnostics: serde_json::Value) -> Self {
+        self.diagnostics = Some(diagnostics);
+        self
     }
 }
 

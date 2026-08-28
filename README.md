@@ -53,21 +53,28 @@ stack:
 ```sh
 git clone https://github.com/source-inc/web-research-mcp.git
 cd web-research-mcp
-./scripts/stack up
+./scripts/stack install-mcp
 ```
 
-It starts the released gateway image, SearXNG, Firecrawl, Playwright, and
-Firecrawl's Redis, RabbitMQ, and PostgreSQL dependencies. It returns only after
-the gateway health check and real SearXNG and Firecrawl smoke checks pass. The
-MCP endpoint is then `http://127.0.0.1:9213/mcp`.
+`install-mcp` starts the released gateway image, SearXNG, Firecrawl,
+Playwright, and Firecrawl's Redis, RabbitMQ, and PostgreSQL dependencies. It
+returns only after the gateway health check and real SearXNG and Firecrawl
+smoke checks pass, then registers and probes the service against the running
+local Gents node. The MCP endpoint is `http://127.0.0.1:9213/mcp`.
 That loopback URL is for clients running on the host. A client joined to the
 Compose `research` network should use `http://gateway:9213/mcp` instead.
+
+The command requires `gents` on `PATH` and a local `gents server` to be
+running. Set `GENTS_BIN` when the binary has another path. Use
+`./scripts/stack up` when you want to start the infrastructure without
+registering it in Gents.
 
 The full stack reserves roughly 12 GB of memory; allow 14–16 GB for Docker.
 Only the gateway is published, and it is bound to loopback. Evidence is kept in
 a named Docker volume across ordinary stops.
 
 ```sh
+./scripts/stack install-mcp  # start, register with Gents, and probe
 ./scripts/stack status       # show containers
 ./scripts/stack logs         # follow logs
 ./scripts/stack down         # stop; retain evidence volume

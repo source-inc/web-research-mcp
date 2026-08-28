@@ -4,6 +4,8 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose=(docker compose --project-directory "${repo_dir}" -f "${repo_dir}/compose.yaml")
 command="${1:-up}"
+service_id="web-research-mcp"
+service_version="0.1.6"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -42,16 +44,44 @@ wait_until_ready() {
   return 1
 }
 
+start_stack() {
+  require_command docker
+  require_command curl
+  if [[ -n "${WEB_RESEARCH_MCP_IMAGE:-}" ]]; then
+    "${compose[@]}" up --detach --pull never
+  else
+    "${compose[@]}" up --detach --pull always
+  fi
+  wait_until_ready
+}
+
+install_mcp() {
+  local gents_bin="${GENTS_BIN:-gents}"
+  local port="${WEB_RESEARCH_MCP_PORT:-9213}"
+  local endpoint="http://127.0.0.1:${port}/mcp"
+
+  require_command "${gents_bin}"
+  start_stack
+  "${gents_bin}" mcp register "${service_id}" \
+    --endpoint "${endpoint}" \
+    --display-name "Web Research MCP" \
+    --description "Local bounded web evidence gateway" \
+    --version "${service_version}" \
+    --send-agent-did
+  "${gents_bin}" mcp probe "${service_id}" --timeout 30s
+
+  echo
+  echo "web-research-mcp is installed in Gents"
+  echo "Next: ${gents_bin} graph install web-deep-research"
+  echo "Then: ${gents_bin} graph run web-deep-research --question \"...\" --watch"
+}
+
 case "${command}" in
   up)
-    require_command docker
-    require_command curl
-    if [[ -n "${WEB_RESEARCH_MCP_IMAGE:-}" ]]; then
-      "${compose[@]}" up --detach --pull never
-    else
-      "${compose[@]}" up --detach --pull always
-    fi
-    wait_until_ready
+    start_stack
+    ;;
+  install-mcp)
+    install_mcp
     ;;
   down)
     require_command docker
@@ -70,7 +100,7 @@ case "${command}" in
     "${compose[@]}" logs --follow --tail 200
     ;;
   *)
-    echo "usage: $0 {up|down|reset|status|logs}" >&2
+    echo "usage: $0 {up|install-mcp|down|reset|status|logs}" >&2
     exit 2
     ;;
 esac
